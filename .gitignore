@@ -16,11 +16,12 @@ models/
 *.pt
 *.gguf
 
-# uploaded media + local job data
-storage/
-data/
-uploads/
-weights/
+# uploaded media + local job data (runtime dirs at repo root only — the leading
+# slash keeps these from matching the app/storage/ source package)
+/storage/
+/data/
+/uploads/
+/weights/
 
 # real audio/video test fixtures (media is never committed)
 tests/fixtures/*.wav
