@@ -18,6 +18,11 @@ select = ["E", "F", "I", "B", "UP"]
 # identically on 3.12. The mix is deliberate, not an oversight.
 ignore = ["E501", "UP042"]
 
+[tool.ruff.lint.isort]
+# Declare `app` as first-party so import sorting is deterministic in CI, where the
+# project is not pip-installed and ruff would otherwise misclassify `app.*` imports.
+known-first-party = ["app"]
+
 [tool.ruff.lint.per-file-ignores]
 # FastAPI's File()/Form()/Depends() in argument defaults is the framework idiom,
 # not the B008 anti-pattern.
