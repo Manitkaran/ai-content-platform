@@ -162,7 +162,10 @@ def test_real_driver_window_slices_pcm_by_start_time():
             # model returns tail-relative timestamps; driver must shift by start_time
             return iter([_Seg(0.0, 1.0, "world")]), _Info()
 
-    import numpy as np
+    import pytest
+
+    # numpy ships with the real model, not the light default suite; skip when absent.
+    np = pytest.importorskip("numpy")
 
     # 4 s of PCM at 16 kHz; start_time=2.0 → the model should see ~2 s (32000 samples).
     pcm = np.zeros(4 * 16000, dtype="float32")
