@@ -1,0 +1,7 @@
+# Runtime dependencies for the API + worker (M0.1).
+# The real model (faster-whisper) lives in requirements-model.txt so the GPU-free
+# default test suite installs a light dependency set.
+fastapi>=0.111
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9
+pydantic>=2.7

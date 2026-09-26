@@ -1,0 +1,4 @@
+# The real STT model driver (M1.3). Heavy; only needed to run real transcription
+# (ACP_MODEL_DRIVER=faster_whisper). The default test suite runs on the fake and
+# does NOT need this.
+faster-whisper>=1.0

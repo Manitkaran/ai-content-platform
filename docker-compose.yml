@@ -1,0 +1,63 @@
+# M0.4 — the full stack in one command: `docker compose up`.
+# One image (Dockerfile); the API and the worker differ only by command.
+# CPU is the default (D13); a GPU profile is provided below.
+#
+# Every interpolated variable here is documented in .env.example (drift-checked
+# by tests/test_compose.py). Copy .env.example to .env before `up`.
+
+services:
+  app:
+    build: .
+    image: ai-content-platform:latest
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "${ACP_PORT}:8000"
+    environment:
+      ACP_APP_NAME: "${ACP_APP_NAME}"
+      ACP_ENV: "${ACP_ENV}"
+      ACP_MODEL_DRIVER: "${ACP_MODEL_DRIVER}"
+      ACP_MODEL_TIER: "${ACP_MODEL_TIER}"
+      ACP_DEVICE: "${ACP_DEVICE}"
+      ACP_STORAGE_DRIVER: "${ACP_STORAGE_DRIVER}"
+      ACP_MAX_UPLOAD_BYTES: "${ACP_MAX_UPLOAD_BYTES}"
+      ACP_TRANSCRIPT_RETENTION_DAYS: "${ACP_TRANSCRIPT_RETENTION_DAYS}"
+    volumes:
+      - acp-data:/data        # job data + uploaded media (M4.1 storage root)
+      - acp-weights:/weights  # model weights — a volume, never in the image
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  # The worker: same image, different command. Runs the retention sweep and picks
+  # up any queued work off the request (M0.4 / D11).
+  worker:
+    build: .
+    image: ai-content-platform:latest
+    command: ["python", "-m", "app.worker"]
+    environment:
+      ACP_ENV: "${ACP_ENV}"
+      ACP_MODEL_DRIVER: "${ACP_MODEL_DRIVER}"
+      ACP_MODEL_TIER: "${ACP_MODEL_TIER}"
+      ACP_DEVICE: "${ACP_DEVICE}"
+      ACP_STORAGE_DRIVER: "${ACP_STORAGE_DRIVER}"
+      ACP_TRANSCRIPT_RETENTION_DAYS: "${ACP_TRANSCRIPT_RETENTION_DAYS}"
+    volumes:
+      - acp-data:/data
+      - acp-weights:/weights
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  acp-data:
+  acp-weights:
+
+# --- GPU variant (D13) -------------------------------------------------------
+# Run the GPU path with:
+#   ACP_DEVICE=cuda docker compose -f docker-compose.yml -f docker-compose.gpu.yml up
+# (see docker-compose.gpu.yml). CPU is the default so the stack runs anywhere.

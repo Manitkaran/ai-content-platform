@@ -1,0 +1,865 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "ai-content-platform",
+    "description": "Self-hosted speech/video-to-text. Wraps an open-source STT model (Whisper family) behind a REST API. Submit media to POST /transcribe and poll GET /jobs/{id}.",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "meta"
+        ],
+        "summary": "Liveness check",
+        "description": "Return ``{\"status\": \"ok\", \"ffmpeg\": ...}`` when the app is up.\n\nLiveness, not readiness: ``status`` is ``ok`` whenever the app is up. The\n``ffmpeg`` field (CR-016) reports whether the FFmpeg CLI \u2014 required for video\ninput (D8) \u2014 is present, so a missing system dependency is visible before a\nvideo job fails deep in extraction. Audio still works without it (CR-011).",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Health Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/transcribe": {
+      "post": {
+        "tags": [
+          "transcription"
+        ],
+        "summary": "Submit media for transcription",
+        "operationId": "transcribe_transcribe_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_transcribe_transcribe_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Job accepted; poll GET /jobs/{id}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmitResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Upload exceeds the configured size limit."
+          },
+          "415": {
+            "description": "Unsupported or unrecognised media."
+          },
+          "422": {
+            "description": "Invalid options (e.g. unknown language code)."
+          }
+        }
+      }
+    },
+    "/transcribe/batch": {
+      "post": {
+        "tags": [
+          "transcription"
+        ],
+        "summary": "Submit many files at once (CR-019)",
+        "operationId": "transcribe_batch_transcribe_batch_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_transcribe_batch_transcribe_batch_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Per-file results (accepted or rejected). Poll each id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Too many files in one batch (ACP_MAX_BATCH_FILES)."
+          },
+          "422": {
+            "description": "No files, or invalid options (e.g. unknown language)."
+          }
+        }
+      }
+    },
+    "/jobs/{job_id}": {
+      "get": {
+        "tags": [
+          "transcription"
+        ],
+        "summary": "Get job status and result",
+        "operationId": "get_job_jobs__job_id__get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Job found (status, and result/error when terminal).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such job (unknown or malformed id)."
+          },
+          "410": {
+            "description": "Transcript deleted or expired (retention, D16)."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/jobs/{job_id}/segments": {
+      "put": {
+        "tags": [
+          "transcription"
+        ],
+        "summary": "Edit a completed job's subtitle segments (CR-018)",
+        "description": "Replace the segments of a completed job and re-derive its text (CR-018).\n\nPure data edit \u2014 no model call, no state change. Persisted durably (CR-017).",
+        "operationId": "edit_segments_jobs__job_id__segments_put",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SegmentsEdit"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Segments replaced; updated job returned.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such job."
+          },
+          "409": {
+            "description": "Job is not completed (nothing to edit)."
+          },
+          "422": {
+            "description": "Invalid segments (empty list or end < start)."
+          }
+        }
+      }
+    },
+    "/jobs/{job_id}/subtitle": {
+      "get": {
+        "tags": [
+          "transcription"
+        ],
+        "summary": "Download the rendered transcript/subtitle file",
+        "operationId": "download_subtitle_jobs__job_id__subtitle_get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Override the export format: txt/text, srt, or vtt. Absent \u2192 the job's original format. (CR-018)",
+              "title": "Format"
+            },
+            "description": "Override the export format: txt/text, srt, or vtt. Absent \u2192 the job's original format. (CR-018)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The rendered file (txt/srt/vtt) as a download.",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "No such job."
+          },
+          "409": {
+            "description": "Job is not completed yet."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/templates": {
+      "get": {
+        "tags": [
+          "templates"
+        ],
+        "summary": "List saved prompt templates (CR-022)",
+        "operationId": "list_templates_templates_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Template"
+                  },
+                  "type": "array",
+                  "title": "Response List Templates Templates Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "templates"
+        ],
+        "summary": "Create or update a prompt template (CR-022)",
+        "operationId": "upsert_template_templates_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemplateCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Template saved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Template"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid name or prompt too long."
+          }
+        }
+      }
+    },
+    "/templates/{name}": {
+      "delete": {
+        "tags": [
+          "templates"
+        ],
+        "summary": "Delete a prompt template (CR-022)",
+        "operationId": "delete_template_templates__name__delete",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "BatchItemResult": {
+        "properties": {
+          "filename": {
+            "type": "string",
+            "title": "Filename",
+            "description": "The submitted file's name."
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id",
+            "description": "Job id if accepted."
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobStatus"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "'queued' if accepted."
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ErrorSchema"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Present only if this file was rejected."
+          }
+        },
+        "type": "object",
+        "required": [
+          "filename"
+        ],
+        "title": "BatchItemResult",
+        "description": "One file's outcome in a batch submission (CR-019).\n\nEither accepted (``id`` + ``status``) or rejected (``error``) \u2014 never both.\nAccepted files become ordinary jobs polled via ``GET /jobs/{id}``."
+      },
+      "BatchResponse": {
+        "properties": {
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/BatchItemResult"
+            },
+            "type": "array",
+            "title": "Results",
+            "description": "Per-file outcomes, in submission order. Partial success is normal."
+          }
+        },
+        "type": "object",
+        "required": [
+          "results"
+        ],
+        "title": "BatchResponse",
+        "description": "Returned by ``POST /transcribe/batch`` \u2014 one result row per file (CR-019)."
+      },
+      "Body_transcribe_batch_transcribe_batch_post": {
+        "properties": {
+          "files": {
+            "items": {
+              "type": "string",
+              "contentMediaType": "application/octet-stream"
+            },
+            "type": "array",
+            "title": "Files",
+            "description": "Audio/video files to transcribe."
+          },
+          "language": {
+            "type": "string",
+            "title": "Language",
+            "description": "'auto' or an ISO language code.",
+            "default": "auto"
+          },
+          "translate": {
+            "type": "boolean",
+            "title": "Translate",
+            "description": "Translate to English (Whisper-native).",
+            "default": false
+          },
+          "target_language": {
+            "type": "string",
+            "title": "Target Language",
+            "description": "Translate every file into this ISO code via the MT seam (CR-025); '' = off. Not 'auto'.",
+            "default": ""
+          },
+          "output_format": {
+            "$ref": "#/components/schemas/OutputFormat",
+            "description": "text | srt | vtt | json (applied to every file).",
+            "default": "text"
+          },
+          "prompt": {
+            "type": "string",
+            "title": "Prompt",
+            "description": "Whisper initial_prompt for every file (CR-022).",
+            "default": ""
+          },
+          "template": {
+            "type": "string",
+            "title": "Template",
+            "description": "Saved template name for every file (CR-022).",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "files"
+        ],
+        "title": "Body_transcribe_batch_transcribe_batch_post"
+      },
+      "Body_transcribe_transcribe_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "description": "Audio or video file to transcribe."
+          },
+          "language": {
+            "type": "string",
+            "title": "Language",
+            "description": "'auto' or an ISO language code.",
+            "default": "auto"
+          },
+          "translate": {
+            "type": "boolean",
+            "title": "Translate",
+            "description": "Translate to English (Whisper-native).",
+            "default": false
+          },
+          "target_language": {
+            "type": "string",
+            "title": "Target Language",
+            "description": "Translate transcript into this ISO code via the MT seam (CR-025); '' = off. Not 'auto'. Independent of the English translate flag.",
+            "default": ""
+          },
+          "output_format": {
+            "$ref": "#/components/schemas/OutputFormat",
+            "description": "text | srt | vtt | json.",
+            "default": "text"
+          },
+          "prompt": {
+            "type": "string",
+            "title": "Prompt",
+            "description": "Whisper initial_prompt biasing vocabulary (CR-022).",
+            "default": ""
+          },
+          "template": {
+            "type": "string",
+            "title": "Template",
+            "description": "Name of a saved prompt template to apply (CR-022).",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_transcribe_transcribe_post"
+      },
+      "ErrorSchema": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "Stable machine-readable error code."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable error detail."
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ErrorSchema"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "JobResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "original_filename": {
+            "type": "string",
+            "title": "Original Filename"
+          },
+          "detected_language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detected Language",
+            "description": "Present once completed."
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResultSchema"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Present only when status is 'completed'."
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ErrorSchema"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Present only when status is 'failed'."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "original_filename"
+        ],
+        "title": "JobResponse",
+        "description": "Returned by ``GET /jobs/{id}`` \u2014 status, and result/error when terminal."
+      },
+      "JobStatus": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "running",
+          "completed",
+          "failed"
+        ],
+        "title": "JobStatus",
+        "description": "The only legal job states (D12). A typed enum, never a raw string."
+      },
+      "OutputFormat": {
+        "type": "string",
+        "enum": [
+          "text",
+          "srt",
+          "vtt",
+          "json"
+        ],
+        "title": "OutputFormat",
+        "description": "Requested transcript rendering (D9). Formatting lives in M3.3.\n\n``json`` (CR-020) is the machine-readable export of the same DTO \u2014 text +\ndetected language + segment-level timestamps (D18), no new content."
+      },
+      "ResultSchema": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "The full transcript in the requested format."
+          },
+          "detected_language": {
+            "type": "string",
+            "title": "Detected Language",
+            "description": "The language detected or used (ISO code)."
+          },
+          "segments": {
+            "items": {
+              "$ref": "#/components/schemas/SegmentSchema"
+            },
+            "type": "array",
+            "title": "Segments",
+            "description": "Timestamped segments (segment-level)."
+          },
+          "output_format": {
+            "$ref": "#/components/schemas/OutputFormat",
+            "description": "The format the transcript was rendered in."
+          }
+        },
+        "type": "object",
+        "required": [
+          "text",
+          "detected_language",
+          "output_format"
+        ],
+        "title": "ResultSchema"
+      },
+      "SegmentSchema": {
+        "properties": {
+          "start": {
+            "type": "number",
+            "title": "Start",
+            "description": "Segment start time in seconds."
+          },
+          "end": {
+            "type": "number",
+            "title": "End",
+            "description": "Segment end time in seconds."
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "Transcript text for this segment."
+          }
+        },
+        "type": "object",
+        "required": [
+          "start",
+          "end",
+          "text"
+        ],
+        "title": "SegmentSchema"
+      },
+      "SegmentsEdit": {
+        "properties": {
+          "segments": {
+            "items": {
+              "$ref": "#/components/schemas/SegmentSchema"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Segments",
+            "description": "The full replacement segment list (non-empty)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "segments"
+        ],
+        "title": "SegmentsEdit",
+        "description": "Body of ``PUT /jobs/{id}/segments`` \u2014 the corrected segments (CR-018).\n\nEach segment needs ``end >= start >= 0`` (enforced on ``SegmentSchema``); the\nlist must be non-empty. Editing is segment-level only (D18), never re-runs the\nmodel, and never changes the job's state.",
+        "example": {
+          "segments": [
+            {
+              "end": 1.5,
+              "start": 0.0,
+              "text": "Corrected line one."
+            },
+            {
+              "end": 3.0,
+              "start": 1.5,
+              "text": "Corrected line two."
+            }
+          ]
+        }
+      },
+      "SubmitResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Job id; poll GET /jobs/{id}."
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus",
+            "description": "Always 'queued' on submission."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status"
+        ],
+        "title": "SubmitResponse",
+        "description": "Returned by ``POST /transcribe`` \u2014 the job id to poll.",
+        "example": {
+          "id": "3f9a...",
+          "status": "queued"
+        }
+      },
+      "Template": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Unique name, [A-Za-z0-9_-]{1,64}."
+          },
+          "prompt": {
+            "type": "string",
+            "title": "Prompt",
+            "description": "The Whisper initial_prompt this template applies."
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "Optional human note.",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "prompt"
+        ],
+        "title": "Template",
+        "description": "A named, reusable prompt preset (CR-022)."
+      },
+      "TemplateCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Unique name, [A-Za-z0-9_-]{1,64}."
+          },
+          "prompt": {
+            "type": "string",
+            "title": "Prompt",
+            "description": "The prompt text to save."
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "Optional human note.",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "prompt"
+        ],
+        "title": "TemplateCreate",
+        "description": "Body of ``POST /templates`` (CR-022)."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

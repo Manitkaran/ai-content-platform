@@ -1,0 +1,38 @@
+# M0.3 — CI: lint + the GPU-free default test suite on every push/PR.
+# The real-model suite (pytest -m real_model) is intentionally NOT run here — it
+# needs weights/hardware and runs in a dedicated stage or locally.
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dev dependencies (no real model)
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint
+        run: ruff check app tests
+
+      - name: Run the GPU-free test suite
+        run: pytest            # pytest.ini deselects -m real_model by default
+
+  # Placeholder for the gated real-model stage. Enable on a runner with weights:
+  #
+  # real-model:
+  #   runs-on: [self-hosted, gpu]
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - run: pip install -r requirements-dev.txt -r requirements-model.txt
+  #     - run: ACP_MODEL_DRIVER=faster_whisper pytest -m real_model

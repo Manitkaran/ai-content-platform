@@ -1,0 +1,17 @@
+{
+  "name": "ai-content-platform/client",
+  "description": "Thin PHP client for the AI Content Platform transcription REST API. Contains no AI — it wraps the HTTP API (D3).",
+  "type": "library",
+  "version": "0.2.0",
+  "license": "MIT",
+  "require": {
+    "php": ">=8.1",
+    "ext-curl": "*",
+    "ext-json": "*"
+  },
+  "autoload": {
+    "psr-4": {
+      "AiContentPlatform\\": "src/"
+    }
+  }
+}

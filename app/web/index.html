@@ -1,0 +1,967 @@
+<!DOCTYPE html>
+<!--
+  M6.1 — Web demo page. A single evaluation page and a THIN CLIENT of the public
+  REST API: it calls POST /transcribe and polls GET /jobs/{id} exactly like an
+  external app or SDK would. It adds no backend capability and uses no private
+  endpoint (asserted by tests/test_demo_page.py). Not a product SPA — one page.
+
+  CR-023: full visual redesign to a light-themed, two-panel "WhisperAI"-style
+  product page (left: pitch + feature list; right: the Transcribe card). All
+  existing wired JavaScript is preserved verbatim; only markup + styling changed,
+  plus the CR-022 prompt/template controls and a drag-and-drop drop zone.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI Content Platform — Demo</title>
+    <style>
+      :root {
+        --bg:#f7f7fb; --card:#ffffff; --ink:#1b1c2b; --muted:#6b7180;
+        --line:#e6e7ef; --field:#f4f4fa; --field-ink:#1b1c2b; --field-line:#dcdcec;
+        --accent:#6d5efc; --accent-ink:#ffffff; --accent-soft:#efeeff;
+        --err:#e5484d; --ok:#12a150;
+        /* dark surfaces kept for the live-voice box (owner's original mockup) */
+        --dark:#262626; --dark-line:#4a4a4a;
+      }
+      * { box-sizing: border-box; }
+      body { margin:0; color:var(--ink); line-height:1.55;
+             font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+             background:
+               radial-gradient(1200px 600px at 85% -10%, #efeeff 0%, rgba(239,238,255,0) 60%),
+               radial-gradient(900px 500px at -10% 110%, #eef0ff 0%, rgba(238,240,255,0) 55%),
+               var(--bg);
+             -webkit-font-smoothing:antialiased; }
+
+      main { max-width:1120px; margin:0 auto; padding:3.5rem 1.5rem 4rem; }
+      .layout { display:grid; grid-template-columns: 1.05fr 1fr; gap:3rem; align-items:start; }
+      @media (max-width:900px) {
+        main { padding:2.25rem 1.15rem 3rem; }
+        .layout { grid-template-columns:1fr; gap:2rem; }
+      }
+
+      /* ---- LEFT column: pitch + feature list ---- */
+      .brand { display:inline-flex; align-items:center; gap:.55rem;
+        font-weight:700; font-size:.9rem; letter-spacing:.01em; color:var(--accent);
+        background:var(--accent-soft); padding:.4rem .75rem; border-radius:999px; }
+      .brand .dot { width:.6rem; height:.6rem; border-radius:50%;
+        background:var(--accent); box-shadow:0 0 0 4px rgba(109,94,252,.18); }
+      h1 { font-size:2.6rem; line-height:1.1; margin:1.4rem 0 0;
+        letter-spacing:-.02em; font-weight:800; }
+      h1 .grad { background:linear-gradient(90deg,#6d5efc,#9a7bff);
+        -webkit-background-clip:text; background-clip:text; color:transparent; }
+      p.tagline { color:var(--muted); font-size:1.08rem; margin:1rem 0 0; max-width:34rem; }
+
+      ul.features { list-style:none; padding:0; margin:2rem 0 0; display:grid; gap:1.05rem; }
+      ul.features li { display:flex; gap:.85rem; align-items:flex-start; }
+      ul.features .tick { flex:0 0 auto; width:1.55rem; height:1.55rem; border-radius:50%;
+        background:var(--accent-soft); color:var(--accent);
+        display:flex; align-items:center; justify-content:center; margin-top:.1rem; }
+      ul.features .tick svg { width:.95rem; height:.95rem; stroke:currentColor;
+        stroke-width:2.6; fill:none; stroke-linecap:round; stroke-linejoin:round; }
+      ul.features b { font-weight:650; }
+      ul.features span.desc { color:var(--muted); }
+
+      .cta { display:inline-flex; align-items:center; gap:.5rem; margin-top:2rem;
+        background:var(--accent); color:var(--accent-ink); text-decoration:none;
+        padding:.7rem 1.15rem; border-radius:10px; font-weight:650; font-size:.95rem;
+        box-shadow:0 8px 22px rgba(109,94,252,.28); }
+
+      /* ---- RIGHT column: the Transcribe card ---- */
+      .card { background:var(--card); border:1px solid var(--line); border-radius:18px;
+        padding:1.6rem; box-shadow:0 18px 50px rgba(27,28,43,.08); }
+      .card + .card { margin-top:1.25rem; }
+      .card h2 { margin:0 0 .25rem; font-size:1.2rem; font-weight:700; }
+      .card p.hint { margin:0 0 1.1rem; color:var(--muted); font-size:.9rem; }
+
+      /* ---- CR-024: tab switcher (File / Speak Live) inside one card ---- */
+      .tabs { display:flex; gap:.4rem; margin:0 0 1.35rem; padding:.3rem;
+        background:var(--field); border:1px solid var(--field-line); border-radius:12px; }
+      .tab { flex:1; appearance:none; border:0; cursor:pointer; font:inherit;
+        font-weight:650; font-size:.92rem; color:var(--muted); background:transparent;
+        padding:.6rem .5rem; border-radius:9px; transition:background .15s ease, color .15s ease; }
+      .tab:hover { color:var(--ink); }
+      .tab[aria-selected="true"] { background:var(--card); color:var(--accent);
+        box-shadow:0 2px 8px rgba(27,28,43,.08); }
+      .tab:focus-visible { outline:none; box-shadow:0 0 0 3px rgba(109,94,252,.28); }
+      .tabpanel[hidden] { display:none; }
+
+      label { display:block; font-size:.82rem; font-weight:600; color:var(--ink);
+        margin:1rem 0 .35rem; }
+      select, input[type=text], textarea {
+        width:100%; padding:.6rem .7rem; background:var(--field); color:var(--field-ink);
+        border:1px solid var(--field-line); border-radius:10px; font:inherit; font-size:.92rem; }
+      select:focus, input[type=text]:focus, textarea:focus, .dropzone:focus-within {
+        outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(109,94,252,.16); }
+      textarea#prompt { min-height:66px; resize:vertical; }
+      .row { display:flex; gap:1rem; flex-wrap:wrap; }
+      .row > div { flex:1; min-width:150px; }
+      .check { display:flex; align-items:center; gap:.55rem; margin-top:1.1rem; }
+      .check input { accent-color:var(--accent); width:1rem; height:1rem; }
+      .check label { margin:0; font-weight:500; color:var(--ink); font-size:.9rem; }
+
+      /* the drop zone wraps the (visually hidden) file input */
+      .dropzone { margin-top:.25rem; border:2px dashed var(--field-line); border-radius:14px;
+        background:var(--field); padding:1.9rem 1rem; text-align:center; cursor:pointer;
+        transition:border-color .15s ease, background .15s ease; }
+      .dropzone:hover { border-color:var(--accent); }
+      .dropzone.dragover { border-color:var(--accent); background:var(--accent-soft); }
+      .dropzone .dz-icon { width:2.6rem; height:2.6rem; margin:0 auto .6rem;
+        border-radius:12px; background:var(--accent-soft); color:var(--accent);
+        display:flex; align-items:center; justify-content:center; }
+      .dropzone .dz-icon svg { width:1.4rem; height:1.4rem; stroke:currentColor;
+        stroke-width:2; fill:none; stroke-linecap:round; stroke-linejoin:round; }
+      .dropzone .dz-main { font-weight:650; }
+      .dropzone .dz-main u { color:var(--accent); text-underline-offset:2px; }
+      .dropzone .dz-sub { color:var(--muted); font-size:.82rem; margin-top:.3rem; }
+      .dropzone .dz-files { color:var(--accent); font-size:.85rem; margin-top:.5rem;
+        font-weight:600; }
+      /* keep #file in the DOM (script binds to it) but visually hidden */
+      #file { position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+        overflow:hidden; clip:rect(0 0 0 0); border:0; }
+
+      button#submit { margin-top:1.35rem; width:100%; background:var(--accent);
+        color:var(--accent-ink); border:0; padding:.8rem 1.1rem; border-radius:11px;
+        font-weight:700; font-size:.98rem; cursor:pointer;
+        box-shadow:0 8px 22px rgba(109,94,252,.28); }
+      button#submit:disabled { opacity:.55; cursor:not-allowed; box-shadow:none; }
+
+      #status { margin-top:1rem; font-weight:600; }
+      .muted { color:var(--muted); }
+      .err { color:var(--err); }
+      .ok { color:var(--ok); }
+      pre { white-space:pre-wrap; word-break:break-word; background:var(--field);
+        border:1px solid var(--line); border-radius:10px; padding:.85rem;
+        max-height:340px; overflow:auto; }
+      /* CR-004: transcript outputs are editable (read-only) textareas — selectable,
+         scrollable, copyable — replacing the old <pre> display boxes. */
+      textarea.transcript { width:100%; margin-top:.75rem; resize:vertical;
+        min-height:120px; height:220px; background:var(--field); color:var(--ink);
+        border:1px solid var(--line); border-radius:10px; padding:.85rem;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size:.9rem; line-height:1.5; white-space:pre-wrap; word-break:break-word; }
+      a.dl { display:inline-block; margin-top:.75rem; color:var(--accent);
+        font-weight:600; }
+      /* CR-018: subtitle segment editor */
+      table.segtable { width:100%; border-collapse:collapse; font-size:.85rem; }
+      table.segtable th { text-align:left; color:var(--muted); font-weight:600;
+        padding:.3rem .4rem; border-bottom:1px solid var(--line); }
+      table.segtable td { padding:.2rem .3rem; }
+      table.segtable input { width:100%; box-sizing:border-box; background:var(--field);
+        color:var(--ink); border:1px solid var(--field-line); border-radius:8px; padding:.35rem; }
+      table.segtable .seg-start, table.segtable .seg-end { width:7rem; }
+      .editbar { display:flex; align-items:center; gap:.6rem; margin-top:.7rem;
+        flex-wrap:wrap; }
+      .editbar .spacer { flex:1; }
+      .editbar button { background:var(--accent); color:var(--accent-ink); border:0;
+        border-radius:9px; padding:.5rem .95rem; cursor:pointer; font-weight:600; }
+      .editbar select { width:auto; background:var(--field); color:var(--ink);
+        border:1px solid var(--field-line); border-radius:8px; padding:.35rem .5rem; }
+      /* CR-019: batch job list */
+      .batch-row { padding:.45rem 0; border-bottom:1px solid var(--line); font-size:.9rem; }
+      code { background:var(--field); padding:.1rem .35rem; border-radius:4px; }
+      .or { text-align:center; color:var(--muted); margin:0 0 .5rem; font-size:.8rem;
+            text-transform:uppercase; letter-spacing:.1em; font-weight:600; }
+      #micHint { margin:.6rem 0 0; font-size:.85rem; }
+      /* CR-006: the voice box's own language + translate controls. */
+      #micControls { display:flex; align-items:center; gap:.75rem; flex-wrap:wrap;
+        margin-top:.6rem; }
+      #micControls label { margin:0; font-size:.85rem; color:var(--muted); }
+      #micControls select { width:auto; padding:.4rem .55rem; }
+      #micTranslateLabel { display:flex; align-items:center; gap:.4rem; cursor:pointer;
+        color:var(--ink); font-weight:500; }
+      #micTranslateLabel input { margin:0; accent-color:var(--accent); }
+      #micControls:has(select:disabled) { opacity:.6; }
+      /* CR-008: single input box + press-and-hold SVG mic (owner's mockup). */
+      .input-box { position:relative; margin-top:.75rem; min-height:120px;
+        padding:20px 74px 20px 20px; background:var(--dark); border:1px solid var(--dark-line);
+        border-radius:22px; }
+      .input-box.recording { border-color:var(--err); }
+      #chatInput { width:100%; min-height:75px; max-height:200px; resize:none; border:0;
+        outline:none; background:transparent; color:#fff; font-size:16px;
+        font-family:inherit; line-height:1.5; }
+      #chatInput::placeholder { color:#8d8d8d; }
+      .voice-button { position:absolute; right:18px; bottom:18px; width:46px; height:46px;
+        margin:0; border:0; border-radius:12px; background:#3b3b3b; color:#fff;
+        display:flex; align-items:center; justify-content:center; cursor:pointer;
+        transition:all .2s ease; touch-action:none; }
+      .voice-button:hover { background:#505050; transform:scale(1.05); }
+      .voice-button:active { transform:scale(.95); }
+      .voice-button svg { width:22px; height:22px; fill:none; stroke:currentColor;
+        stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+      .voice-button.recording { background:var(--err); animation:micpulse 1.2s infinite; }
+      @keyframes micpulse {
+        0%   { box-shadow:0 0 0 0 rgba(229,72,77,.5); }
+        70%  { box-shadow:0 0 0 12px rgba(229,72,77,0); }
+        100% { box-shadow:0 0 0 0 rgba(229,72,77,0); }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="layout">
+
+        <!-- ===================== LEFT: pitch ===================== -->
+        <section class="pitch">
+          <span class="brand"><span class="dot"></span>AI Content Platform</span>
+          <!-- CR-024: engine name "Whisper" removed from the hero headline. -->
+          <h1>The Most Advanced <span class="grad">Transcription.</span></h1>
+          <p class="tagline">Self-hosted, private, and fast. Turn any audio or video
+            into accurate transcripts, translations and editable subtitles — from a
+            single clip to bulk uploads, or live as you speak.</p>
+
+          <ul class="features">
+            <li>
+              <span class="tick"><svg viewBox="0 0 24 24"><path d="M4 12l5 5L20 6"/></svg></span>
+              <span><b>100+ Languages</b> — <span class="desc">transcribe globally, auto-detected</span></span>
+            </li>
+            <li>
+              <span class="tick"><svg viewBox="0 0 24 24"><path d="M4 12l5 5L20 6"/></svg></span>
+              <span><b>Unlimited &amp; bulk uploads</b> — <span class="desc">audio and video up to 5 GB per file</span></span>
+            </li>
+            <li>
+              <span class="tick"><svg viewBox="0 0 24 24"><path d="M4 12l5 5L20 6"/></svg></span>
+              <span><b>Advanced Prompting &amp; Templates</b> — <span class="desc">customize every transcript</span></span>
+            </li>
+            <li>
+              <span class="tick"><svg viewBox="0 0 24 24"><path d="M4 12l5 5L20 6"/></svg></span>
+              <span><b>Live Voice Typing</b> — <span class="desc">speech to text as you speak</span></span>
+            </li>
+            <li>
+              <span class="tick"><svg viewBox="0 0 24 24"><path d="M4 12l5 5L20 6"/></svg></span>
+              <span><b>SRT / VTT / JSON export</b> — <span class="desc">with editable subtitles</span></span>
+            </li>
+          </ul>
+
+          <a class="cta" href="#form">Transcribe a file
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          </a>
+        </section>
+
+        <!-- ===================== RIGHT: the app ===================== -->
+        <section class="app">
+          <!-- CR-024: the file form and the live-speak panel are now two TABS inside a
+               single card, not two stacked cards. Tab bodies are .tabpanel; the tab bar
+               swaps which one is visible. Every element id is preserved so all existing
+               handlers bind unchanged. -->
+          <div class="card" id="inputCard">
+            <div class="tabs" role="tablist" aria-label="Input mode">
+              <button type="button" class="tab" id="tabFileBtn" role="tab"
+                      aria-controls="tabFile" aria-selected="true">Transcribe a File</button>
+              <button type="button" class="tab" id="tabLiveBtn" role="tab"
+                      aria-controls="tabLive" aria-selected="false">Speak Live</button>
+            </div>
+
+            <!-- ===== Tab 1: Transcribe a File ===== -->
+            <div class="tabpanel" id="tabFile" role="tabpanel" aria-labelledby="tabFileBtn">
+          <form id="form">
+            <p class="hint">Drop a file (or several) and get a transcript back — a thin
+              client of the public REST API.</p>
+
+            <label for="file">Audio / video file(s)</label>
+            <!-- CR-023: dashed drag-and-drop drop zone wrapping the (hidden) file input.
+                 CR-019: multiple lets you batch-submit; one file keeps the single flow. -->
+            <div class="dropzone" id="dropzone">
+              <div class="dz-icon">
+                <svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+              </div>
+              <div class="dz-main">Drop your files here, or <u>browse</u></div>
+              <div class="dz-sub">Audio and video up to 5 GB per file</div>
+              <div class="dz-files" id="dzFiles"></div>
+              <input id="file" name="file" type="file" multiple
+                     accept="audio/*,video/*,.mp3,.wav,.m4a,.flac,.ogg,.mp4,.mov,.mkv,.webm,.avi,.flv,.mpeg" required />
+            </div>
+
+            <div class="row">
+              <div>
+                <label for="language">Language</label>
+                <select id="language" name="language">
+                  <option value="auto" selected>Auto-detect</option>
+                  <option value="en">English (en)</option>
+                  <option value="es">Spanish (es)</option>
+                  <option value="hi">Hindi (hi)</option>
+                  <option value="bn">Bengali (bn)</option>
+                  <option value="fr">French (fr)</option>
+                  <option value="de">German (de)</option>
+                  <option value="zh">Chinese (zh)</option>
+                </select>
+              </div>
+              <div>
+                <label for="output_format">Output format</label>
+                <select id="output_format" name="output_format">
+                  <option value="text" selected>Plain text</option>
+                  <option value="srt">SRT subtitles</option>
+                  <option value="vtt">VTT subtitles</option>
+                  <option value="json">JSON (structured)</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- CR-022: prompt + template controls. Both live inside the form and carry
+                 name attributes, so they serialize automatically for the single-file path. -->
+            <label for="template">Prompt / Template (biases spelling of names &amp; jargon)</label>
+            <select id="template" name="template">
+              <option value="">No template</option>
+            </select>
+            <textarea id="prompt" name="prompt"
+              placeholder="Optional: names, jargon, acronyms to spell correctly..."></textarea>
+
+            <div class="check">
+              <input id="translate" name="translate" type="checkbox" />
+              <label for="translate">Translate to English</label>
+            </div>
+
+            <!-- CR-025 / D25: arbitrary-target machine translation (a second stage
+                 after transcription). "Off" = no MT; independent of the English
+                 checkbox above. `name` so it serializes with the single-file form. -->
+            <label for="target_language">Translate to (any language)</label>
+            <select id="target_language" name="target_language">
+              <option value="" selected>Off — keep original language</option>
+              <option value="en">English (en)</option>
+              <option value="es">Spanish (es)</option>
+              <option value="hi">Hindi (hi)</option>
+              <option value="bn">Bengali (bn)</option>
+              <option value="fr">French (fr)</option>
+              <option value="de">German (de)</option>
+              <option value="zh">Chinese (zh)</option>
+            </select>
+
+            <button id="submit" type="submit">Transcribe</button>
+          </form>
+            </div><!-- /#tabFile -->
+
+            <!-- ===== Tab 2: Speak Live ===== -->
+            <!-- CR-001 / D22: live microphone transcription over WS /transcribe/stream.
+                 CR-008: single clean input box with a press-and-hold mic (owner's mockup).
+                 Hold the mic to record, release to stop; words appear WHILE you speak now
+                 that the server transcribes the growing buffer in windows (D23). File path
+                 above unchanged. CR-024: moved from a stacked card into this tab panel. -->
+            <div class="tabpanel" id="tabLive" role="tabpanel" aria-labelledby="tabLiveBtn" hidden>
+          <div id="micPanel">
+            <p class="hint">Press and hold the mic and speak — your words appear live.</p>
+            <!-- CR-006: voice's own language + translate. -->
+            <div id="micControls">
+              <label for="micLanguage">Language</label>
+              <select id="micLanguage">
+                <!-- CR-015: default to Auto-detect for MULTILINGUAL use — forcing English
+                     (CR-014) garbled Bengali/Hindi speech. English is one click away. -->
+                <option value="auto" selected>Auto-detect</option>
+                <option value="en">English (en)</option>
+                <option value="es">Spanish (es)</option>
+                <option value="hi">Hindi (hi)</option>
+                <option value="bn">Bengali (bn)</option>
+                <option value="fr">French (fr)</option>
+                <option value="de">German (de)</option>
+                <option value="zh">Chinese (zh)</option>
+              </select>
+              <label id="micTranslateLabel" for="micTranslate">
+                <input id="micTranslate" type="checkbox" /> Translate to English
+              </label>
+              <!-- CR-025 / D25: the voice box's own arbitrary-target picker. -->
+              <label for="micTargetLanguage">Translate to</label>
+              <select id="micTargetLanguage">
+                <option value="" selected>Off</option>
+                <option value="en">English (en)</option>
+                <option value="es">Spanish (es)</option>
+                <option value="hi">Hindi (hi)</option>
+                <option value="bn">Bengali (bn)</option>
+                <option value="fr">French (fr)</option>
+                <option value="de">German (de)</option>
+                <option value="zh">Chinese (zh)</option>
+              </select>
+            </div>
+
+            <!-- CR-008: single input box + press-and-hold SVG mic (owner's mockup). -->
+            <div class="input-box" id="chatBox">
+              <textarea id="chatInput"
+                placeholder="Press and hold 🎙 and speak — your words appear as you talk."></textarea>
+              <button id="mic" type="button" class="voice-button"
+                      aria-label="Press and hold to record" title="Press and hold to record">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="9" y="2" width="6" height="11" rx="3"></rect>
+                  <path d="M5 10.5a7 7 0 0 0 14 0"></path>
+                  <path d="M12 17.5v4"></path>
+                  <path d="M8 21.5h8"></path>
+                </svg>
+              </button>
+            </div>
+
+            <div id="micHint" class="muted">Pick a language (or auto-detect) and optionally
+              translate to English. Press and hold the mic to record.</div>
+            <div id="micStatus" class="muted" style="margin-top:.6rem;"></div>
+            <div id="micLang" class="muted"></div>
+          </div>
+            </div><!-- /#tabLive -->
+          </div><!-- /#inputCard -->
+
+          <div class="card" id="output" hidden>
+            <div id="status"></div>
+            <div id="lang" class="muted"></div>
+            <!-- CR-019: batch job list (shown when multiple files are submitted). -->
+            <div id="batchList" hidden></div>
+            <!-- CR-004: file result renders into a read-only textarea. -->
+            <textarea id="transcript" class="transcript" readonly hidden></textarea>
+
+            <!-- CR-018: editable subtitle segments + re-export in any format. -->
+            <div id="editor" hidden>
+              <h3 class="muted" style="margin:14px 0 6px">Edit subtitles</h3>
+              <table id="segTable" class="segtable">
+                <thead><tr><th>Start (s)</th><th>End (s)</th><th>Text</th></tr></thead>
+                <tbody></tbody>
+              </table>
+              <div class="editbar">
+                <button type="button" id="saveEdits">Save edits</button>
+                <span id="editMsg" class="muted"></span>
+                <span class="spacer"></span>
+                <label>Download as
+                  <select id="dlFormat">
+                    <option value="srt">SRT</option>
+                    <option value="vtt">VTT</option>
+                    <option value="txt">TXT</option>
+                    <option value="json">JSON</option>
+                  </select>
+                </label>
+                <a id="download" class="dl" hidden>Download</a>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+
+    <script>
+      // --- thin API client: only public endpoints, same as any SDK ---
+      const form = document.getElementById('form');
+      const submitBtn = document.getElementById('submit');
+      const outPanel = document.getElementById('output');
+      const statusEl = document.getElementById('status');
+      const langEl = document.getElementById('lang');
+      const transcriptEl = document.getElementById('transcript');
+      const downloadEl = document.getElementById('download');
+      let currentJobId = null;   // CR-018: id of the completed job shown in the editor
+
+      function reset() {
+        outPanel.hidden = false;
+        transcriptEl.hidden = true; transcriptEl.value = '';   // CR-004: textarea uses .value
+        downloadEl.hidden = true; downloadEl.removeAttribute('href');
+        document.getElementById('editor').hidden = true;       // CR-018: hide the segment editor
+        currentJobId = null;
+        const bl = document.getElementById('batchList');       // CR-019: hide the batch list
+        if (bl) { bl.hidden = true; bl.innerHTML = ''; }
+        langEl.textContent = '';
+        statusEl.className = ''; statusEl.textContent = '';
+      }
+
+      const batchListEl = document.getElementById('batchList');
+      const fileEl = document.getElementById('file');
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        reset();
+        // CR-019: more than one file selected → batch path.
+        if (fileEl.files && fileEl.files.length > 1) { submitBatch(); return; }
+        submitBtn.disabled = true;
+        const fd = new FormData(form);
+        // checkbox → explicit bool for the API
+        fd.set('translate', document.getElementById('translate').checked ? 'true' : 'false');
+
+        statusEl.textContent = 'Uploading…';
+        let submit;
+        try {
+          const res = await fetch('/transcribe', { method: 'POST', body: fd });
+          if (!res.ok) {
+            const body = await res.json().catch(() => ({}));
+            statusEl.className = 'err';
+            statusEl.textContent = 'Error ' + res.status + ': ' + (body.detail || 'upload rejected');
+            submitBtn.disabled = false;
+            return;
+          }
+          submit = await res.json();
+        } catch (err) {
+          statusEl.className = 'err';
+          statusEl.textContent = 'Network error: ' + err;
+          submitBtn.disabled = false;
+          return;
+        }
+
+        // poll GET /jobs/{id}
+        const id = submit.id;
+        const fmt = document.getElementById('output_format').value;
+        const poll = async () => {
+          const r = await fetch('/jobs/' + encodeURIComponent(id));
+          if (r.status === 410) { finishError('The transcript has expired.'); return; }
+          if (!r.ok) { finishError('Lost the job (HTTP ' + r.status + ').'); return; }
+          const job = await r.json();
+          statusEl.className = 'muted';
+          statusEl.textContent = 'Status: ' + job.status + '…';
+          if (job.status === 'completed') { finishOk(job, id, fmt); return; }
+          if (job.status === 'failed') {
+            finishError((job.error && job.error.message) || 'Transcription failed.');
+            return;
+          }
+          setTimeout(poll, 800); // queued / running → keep polling
+        };
+        poll();
+      });
+
+      function finishOk(job, id, fmt) {
+        statusEl.className = 'ok';
+        statusEl.textContent = 'Completed';
+        if (job.detected_language) langEl.textContent = 'Detected language: ' + job.detected_language;
+        transcriptEl.hidden = false;
+        transcriptEl.value = (job.result && job.result.text) || '(no speech detected)';
+        currentJobId = id;
+        renderEditor(job.result && job.result.segments ? job.result.segments : [], fmt);
+        submitBtn.disabled = false;
+      }
+
+      // --- CR-018: build the editable segment table + wire download ---
+      const editorEl = document.getElementById('editor');
+      const segBody = document.querySelector('#segTable tbody');
+      const dlFormatEl = document.getElementById('dlFormat');
+      const editMsgEl = document.getElementById('editMsg');
+
+      function renderEditor(segments, fmt) {
+        segBody.innerHTML = '';
+        if (!segments.length) { editorEl.hidden = true; return; }
+        editorEl.hidden = false;
+        for (const s of segments) {
+          const tr = document.createElement('tr');
+          tr.innerHTML =
+            '<td><input class="seg-start" type="number" step="0.01" min="0" value="' + s.start + '"></td>' +
+            '<td><input class="seg-end" type="number" step="0.01" min="0" value="' + s.end + '"></td>' +
+            '<td><input class="seg-text" type="text" value=""></td>';
+          tr.querySelector('.seg-text').value = s.text;   // set via .value so quotes are safe
+          segBody.appendChild(tr);
+        }
+        if (fmt === 'srt' || fmt === 'vtt' || fmt === 'text') {
+          dlFormatEl.value = fmt === 'text' ? 'txt' : fmt;
+        }
+        updateDownloadHref();
+      }
+
+      function collectSegments() {
+        return [...segBody.querySelectorAll('tr')].map(tr => ({
+          start: parseFloat(tr.querySelector('.seg-start').value) || 0,
+          end: parseFloat(tr.querySelector('.seg-end').value) || 0,
+          text: tr.querySelector('.seg-text').value,
+        }));
+      }
+
+      function updateDownloadHref() {
+        if (!currentJobId) return;
+        downloadEl.hidden = false;
+        downloadEl.href = '/jobs/' + encodeURIComponent(currentJobId) +
+          '/subtitle?format=' + encodeURIComponent(dlFormatEl.value);
+        downloadEl.textContent = 'Download ' + dlFormatEl.value.toUpperCase();
+      }
+      dlFormatEl.addEventListener('change', updateDownloadHref);
+
+      document.getElementById('saveEdits').addEventListener('click', async () => {
+        if (!currentJobId) return;
+        editMsgEl.textContent = 'Saving…';
+        const res = await fetch('/jobs/' + encodeURIComponent(currentJobId) + '/segments', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ segments: collectSegments() }),
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          editMsgEl.textContent = 'Save failed (HTTP ' + res.status + ')';
+          return;
+        }
+        const job = await res.json();
+        transcriptEl.value = (job.result && job.result.text) || '';
+        editMsgEl.textContent = 'Saved ✓';
+        updateDownloadHref();
+      });
+
+      function finishError(msg) {
+        statusEl.className = 'err';
+        statusEl.textContent = msg;           // failed job shows the error, no infinite spinner
+        submitBtn.disabled = false;
+      }
+
+      // --- CR-019: batch submission → one polling row per accepted file ---
+      async function submitBatch() {
+        submitBtn.disabled = true;
+        statusEl.className = 'muted';
+        statusEl.textContent = 'Uploading ' + fileEl.files.length + ' files…';
+        const fd = new FormData();
+        for (const f of fileEl.files) fd.append('files', f);
+        fd.set('language', document.getElementById('language').value);
+        fd.set('translate', document.getElementById('translate').checked ? 'true' : 'false');
+        fd.set('output_format', document.getElementById('output_format').value);
+        // CR-022: carry the prompt/template into the batch FormData too.
+        fd.set('prompt', document.getElementById('prompt').value);
+        fd.set('template', document.getElementById('template').value);
+
+        let res;
+        try {
+          res = await fetch('/transcribe/batch', { method: 'POST', body: fd });
+        } catch (err) { finishError('Network error: ' + err); return; }
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          finishError('Error ' + res.status + ': ' + (body.detail || 'batch rejected'));
+          return;
+        }
+        const { results } = await res.json();
+        statusEl.className = 'ok';
+        statusEl.textContent = 'Batch accepted (' + results.length + ' files)';
+        batchListEl.hidden = false;
+        batchListEl.innerHTML = '';
+        for (const row of results) {
+          const div = document.createElement('div');
+          div.className = 'batch-row';
+          if (row.error) {
+            div.innerHTML = '<b>' + row.filename + '</b> — <span class="err">rejected: ' +
+              row.error.code + '</span>';
+          } else {
+            div.innerHTML = '<b>' + row.filename + '</b> — <span class="muted" data-id="' +
+              row.id + '">queued…</span>';
+            pollBatchRow(row.id, div.querySelector('[data-id]'));
+          }
+          batchListEl.appendChild(div);
+        }
+        submitBtn.disabled = false;
+      }
+
+      async function pollBatchRow(id, span) {
+        try {
+          const r = await fetch('/jobs/' + encodeURIComponent(id));
+          if (r.status === 410) { span.className = 'err'; span.textContent = 'expired'; return; }
+          const job = await r.json();
+          if (job.status === 'completed') {
+            span.className = 'ok';
+            span.innerHTML = 'completed — <a class="dl" href="/jobs/' +
+              encodeURIComponent(id) + '/subtitle?format=' +
+              document.getElementById('output_format').value + '">download</a>';
+            return;
+          }
+          if (job.status === 'failed') {
+            span.className = 'err';
+            span.textContent = 'failed: ' + ((job.error && job.error.message) || '');
+            return;
+          }
+          span.textContent = job.status + '…';
+          setTimeout(() => pollBatchRow(id, span), 800);
+        } catch (err) { span.className = 'err'; span.textContent = 'lost: ' + err; }
+      }
+
+      // --- CR-001 / D22: live microphone streaming over WS /transcribe/stream ---
+      // --- CR-007: re-housed in a chat-style box; voice text streams into #chatInput ---
+      const micBtn = document.getElementById('mic');
+      const micStatus = document.getElementById('micStatus');
+      const micLang = document.getElementById('micLang');
+      const chatInput = document.getElementById('chatInput');   // CR-007: the message textarea
+      const chatBox = document.getElementById('chatBox');
+      const micLanguage = document.getElementById('micLanguage');   // CR-006: voice's own language
+      const micTranslate = document.getElementById('micTranslate'); // CR-006: voice's own translate
+      const micTargetLanguage = document.getElementById('micTargetLanguage'); // CR-025: MT target
+      let ws = null, mediaRecorder = null, micStream = null, recording = false;
+      let finalizedText = '';   // accumulated finalized segments
+      let interimText = '';     // last interim hypothesis (not yet committed)
+      let stopRequested = false;   // CR-009: user released before the mic/WS opened
+
+      const micSupported = !!(navigator.mediaDevices &&
+        navigator.mediaDevices.getUserMedia && window.MediaRecorder);
+      if (!micSupported) {
+        micBtn.disabled = true;
+        micStatus.className = 'err';
+        micStatus.textContent = 'This browser does not support microphone capture. ' +
+          'Use the file upload above.';
+      }
+
+      // CR-004/CR-007: render committed text + one trailing interim hypothesis into the
+      // chat textarea, auto-scrolling to the newest words. `interim` is remembered so a
+      // user edit (below) and the stream coexist — the edit rewrites `finalizedText`,
+      // the interim rides on top, and never clobbers what was typed.
+      function renderLive(interim) {
+        interimText = interim || '';
+        const parts = [];
+        if (finalizedText) parts.push(finalizedText);
+        if (interimText) parts.push(interimText);
+        chatInput.value = parts.join(' ');
+        chatInput.scrollTop = chatInput.scrollHeight;
+      }
+
+      // CR-005/CR-007: the chat box is editable — a user edit replaces the committed
+      // text (everything except the trailing interim), so corrections stick.
+      chatInput.addEventListener('input', () => {
+        let v = chatInput.value;
+        if (interimText && v.endsWith(interimText)) {
+          v = v.slice(0, v.length - interimText.length);
+        }
+        finalizedText = v.replace(/\s+$/, '');
+      });
+
+      // CR-004: append a finalized segment while dropping the word-aligned overlap
+      // the real (faster_whisper) driver re-emits between windows — otherwise
+      // "what gets in" gets printed once per overlapping window. Case-insensitive,
+      // word-boundary only, so it never chops a word or invents/reorders text.
+      function dedupeAppend(committed, next) {
+        const c = committed.trim().split(/\s+/).filter(Boolean);
+        const n = (next || '').trim().split(/\s+/).filter(Boolean);
+        if (!c.length) return n.join(' ');
+        if (!n.length) return c.join(' ');
+        const eq = (a, b) => a.toLowerCase() === b.toLowerCase();
+        // Longest suffix of `committed` that is a prefix of `next`.
+        const max = Math.min(c.length, n.length);
+        let overlap = 0;
+        for (let k = max; k > 0; k--) {
+          let match = true;
+          for (let i = 0; i < k; i++) {
+            if (!eq(c[c.length - k + i], n[i])) { match = false; break; }
+          }
+          if (match) { overlap = k; break; }
+        }
+        return c.concat(n.slice(overlap)).join(' ');
+      }
+
+      async function startMic() {
+        finalizedText = ''; interimText = '';
+        stopRequested = false;                      // CR-009: reset release-race flag
+        chatInput.value = '';                       // CR-007: fresh dictation
+        chatBox.classList.add('recording');
+        micLanguage.disabled = true; micTranslate.disabled = true;  // CR-006: lock for the stream
+        micTargetLanguage.disabled = true;                          // CR-025: lock MT target too
+        micLang.textContent = ''; micStatus.className = 'muted';
+        try {
+          micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        } catch (err) {
+          micStatus.className = 'err';
+          micStatus.textContent = 'Microphone permission denied or unavailable.';
+          chatBox.classList.remove('recording');
+          micLanguage.disabled = false; micTranslate.disabled = false;
+          micTargetLanguage.disabled = false;   // CR-025
+          stopRequested = false;   // CR-009: nothing opened, nothing to stop
+          return;
+        }
+
+        const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+        ws = new WebSocket(proto + '://' + location.host + '/transcribe/stream');
+        ws.binaryType = 'arraybuffer';
+
+        ws.onopen = () => {
+          // CR-006: the voice box drives its own language/translate, not the file form's.
+          ws.send(JSON.stringify({
+            type: 'start',
+            language: micLanguage.value,
+            translate: micTranslate.checked,
+            target_language: micTargetLanguage.value,   // CR-025 / D25: '' = off
+          }));
+          mediaRecorder = new MediaRecorder(micStream, { mimeType: pickMime() });
+          mediaRecorder.ondataavailable = (e) => {
+            if (e.data && e.data.size > 0 && ws && ws.readyState === WebSocket.OPEN) {
+              e.data.arrayBuffer().then((buf) => ws.send(buf));
+            }
+          };
+          mediaRecorder.start(250);   // CR-009: emit sooner so short holds still send audio
+          recording = true;
+          micBtn.classList.add('recording');
+          micBtn.setAttribute('aria-label', 'Stop microphone');
+          micStatus.textContent = 'Listening…';
+          // CR-009: if the user already released while we were opening, stop now — the
+          // recorder is finally live, so this flushes the tap's audio and sends `stop`.
+          if (stopRequested) stopMic();
+        };
+
+        ws.onmessage = (evt) => {
+          const msg = JSON.parse(evt.data);
+          if (msg.type === 'partial') {
+            // CR-008: partial carries the CUMULATIVE transcript so far — show it live.
+            if (msg.detected_language) micLang.textContent = 'Detected language: ' + msg.detected_language;
+            renderLive(msg.text);
+          } else if (msg.type === 'segment') {
+            // CR-004: dedupe the overlap the real driver re-emits between windows.
+            finalizedText = dedupeAppend(finalizedText, msg.text);
+            renderLive('');
+          } else if (msg.type === 'final') {
+            finalizedText = msg.text || finalizedText;
+            renderLive('');
+            micStatus.className = 'ok';
+            micStatus.textContent = 'Done.';
+            if (msg.detected_language) micLang.textContent = 'Detected language: ' + msg.detected_language;
+          } else if (msg.type === 'error') {
+            micStatus.className = 'err';
+            micStatus.textContent = 'Stream error: ' + (msg.message || msg.code);
+          }
+        };
+
+        ws.onerror = () => {
+          micStatus.className = 'err';
+          micStatus.textContent = 'WebSocket error — is the server reachable?';
+        };
+        ws.onclose = () => { teardownMic(); };
+      }
+
+      function pickMime() {
+        const prefs = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus'];
+        for (const m of prefs) { if (MediaRecorder.isTypeSupported(m)) return m; }
+        return '';   // let the browser choose
+      }
+
+      function stopMic() {
+        stopRequested = false;
+        // CR-009: flush whatever was captured (even < one interval, for a quick tap)
+        // before stopping, so the tap's audio reaches the server and a transcript comes
+        // back. `requestData` emits a chunk synchronously; `stop` emits the last one.
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+          try { mediaRecorder.requestData(); } catch (_e) { /* not all states allow it */ }
+          mediaRecorder.stop();
+        }
+        if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'stop' }));
+      }
+
+      function teardownMic() {
+        recording = false;
+        micBtn.classList.remove('recording');
+        micBtn.setAttribute('aria-label', 'Start microphone');
+        chatBox.classList.remove('recording');
+        if (micStream) { micStream.getTracks().forEach((t) => t.stop()); micStream = null; }
+        mediaRecorder = null;
+        micLanguage.disabled = false; micTranslate.disabled = false;   // CR-006: unlock controls
+        micTargetLanguage.disabled = false;   // CR-025: unlock MT target
+      }
+
+      // CR-008: press-and-hold to record (owner's mockup). Pointer events cover mouse
+      // AND touch in one path; hold to record, release/leave/cancel to stop. A guard
+      // (`holding`) makes start/stop idempotent so a stray event can't double-fire.
+      let holding = false;
+      function beginHold(e) {
+        if (e) e.preventDefault();
+        if (holding || recording) return;
+        holding = true;
+        // CR-009: capture the pointer so a small drift off the 46px button does NOT
+        // fire pointerleave and stop mid-sentence — the hold ends only on real release.
+        if (e && e.pointerId != null && micBtn.setPointerCapture) {
+          try { micBtn.setPointerCapture(e.pointerId); } catch (_e) { /* ignore */ }
+        }
+        startMic();
+      }
+      function endHold() {
+        if (!holding) return;
+        holding = false;
+        // CR-009: if the mic/WS is still opening (recording not yet true), record the
+        // release so `ws.onopen` stops as soon as the recorder is live — a dropped stop
+        // here is exactly why a quick tap recorded forever and wrote no text.
+        if (recording) stopMic(); else stopRequested = true;
+      }
+      micBtn.addEventListener('pointerdown', beginHold);
+      micBtn.addEventListener('pointerup', endHold);
+      micBtn.addEventListener('pointercancel', endHold);
+      // Keyboard access: Space/Enter hold while pressed (a button's default).
+      micBtn.addEventListener('keydown', (e) => {
+        if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) beginHold(e);
+      });
+      micBtn.addEventListener('keyup', (e) => {
+        if (e.key === ' ' || e.key === 'Enter') endHold();
+      });
+
+      // ============================================================
+      // CR-022 / CR-023 additions — appended, existing logic untouched
+      // ============================================================
+
+      // CR-023: drag-and-drop drop zone wrapping the (hidden) #file input. Clicking
+      // it opens the picker; dropped files are assigned onto #file via a DataTransfer
+      // so they flow through the normal submit path unchanged.
+      const dropzone = document.getElementById('dropzone');
+      const dzFiles = document.getElementById('dzFiles');
+
+      function describeFiles() {
+        const n = fileEl.files ? fileEl.files.length : 0;
+        if (!n) { dzFiles.textContent = ''; return; }
+        if (n === 1) { dzFiles.textContent = fileEl.files[0].name; return; }
+        dzFiles.textContent = n + ' files selected';
+      }
+
+      if (dropzone) {
+        // click anywhere on the zone (but not on the input itself) opens the picker
+        dropzone.addEventListener('click', (e) => {
+          if (e.target !== fileEl) fileEl.click();
+        });
+        ['dragenter', 'dragover'].forEach((ev) =>
+          dropzone.addEventListener(ev, (e) => {
+            e.preventDefault(); e.stopPropagation();
+            dropzone.classList.add('dragover');
+          }));
+        ['dragleave', 'dragend'].forEach((ev) =>
+          dropzone.addEventListener(ev, (e) => {
+            e.preventDefault(); e.stopPropagation();
+            dropzone.classList.remove('dragover');
+          }));
+        dropzone.addEventListener('drop', (e) => {
+          e.preventDefault(); e.stopPropagation();
+          dropzone.classList.remove('dragover');
+          const dropped = e.dataTransfer && e.dataTransfer.files;
+          if (dropped && dropped.length) {
+            const dt = new DataTransfer();
+            for (const f of dropped) dt.items.add(f);
+            fileEl.files = dt.files;   // assign onto #file so submit sees them
+            describeFiles();
+          }
+        });
+        fileEl.addEventListener('change', describeFiles);
+      }
+
+      // CR-022: load prompt templates and populate #template. Failures are ignored
+      // silently — the feature is a convenience, the form works without it.
+      const templateEl = document.getElementById('template');
+      const promptEl = document.getElementById('prompt');
+      let loadedTemplates = [];   // cache the list so a change can fill the prompt
+
+      (async () => {
+        try {
+          const res = await fetch('/templates');
+          if (!res.ok) return;
+          const data = await res.json();
+          // accept either a bare array or an object wrapping one
+          loadedTemplates = Array.isArray(data) ? data
+            : (data && Array.isArray(data.templates) ? data.templates
+            : (data && Array.isArray(data.results) ? data.results : []));
+          for (const t of loadedTemplates) {
+            const name = (t && (t.name != null ? t.name : t)) ;
+            if (name == null || name === '') continue;
+            const opt = document.createElement('option');
+            opt.value = String(name);
+            opt.textContent = String(name);
+            templateEl.appendChild(opt);   // keeps the leading "No template" option
+          }
+        } catch (_e) { /* ignore silently */ }
+      })();
+
+      // CR-022: selecting a template fills #prompt from that template's prompt, for
+      // visibility. Convenience only — the server still applies the template by name.
+      templateEl.addEventListener('change', () => {
+        const val = templateEl.value;
+        if (!val) return;
+        const match = loadedTemplates.find(
+          (t) => t && (t.name === val || t === val));
+        if (match && typeof match === 'object' && match.prompt != null) {
+          promptEl.value = String(match.prompt);
+        }
+      });
+
+      // ============================================================
+      // CR-024 — tab switch between "Transcribe a File" and "Speak Live".
+      // Pure show/hide of the two .tabpanel bodies; no other logic touched.
+      // ============================================================
+      const tabFileBtn = document.getElementById('tabFileBtn');
+      const tabLiveBtn = document.getElementById('tabLiveBtn');
+      const tabFile = document.getElementById('tabFile');
+      const tabLive = document.getElementById('tabLive');
+
+      function selectTab(which) {
+        const live = which === 'live';
+        tabLiveBtn.setAttribute('aria-selected', String(live));
+        tabFileBtn.setAttribute('aria-selected', String(!live));
+        tabLive.hidden = !live;
+        tabFile.hidden = live;
+      }
+      tabFileBtn.addEventListener('click', () => selectTab('file'));
+      tabLiveBtn.addEventListener('click', () => selectTab('live'));
+    </script>
+  </body>
+</html>

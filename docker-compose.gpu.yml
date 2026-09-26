@@ -1,0 +1,27 @@
+# GPU override (D13). Layered on top of docker-compose.yml:
+#   ACP_DEVICE=cuda docker compose -f docker-compose.yml -f docker-compose.gpu.yml up
+# Requires the NVIDIA Container Toolkit on the host. CPU remains the default;
+# this file is opt-in.
+
+services:
+  app:
+    environment:
+      ACP_DEVICE: "cuda"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: ["gpu"]
+
+  worker:
+    environment:
+      ACP_DEVICE: "cuda"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: ["gpu"]

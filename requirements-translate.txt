@@ -1,0 +1,9 @@
+# The real machine-translation driver (CR-025 / D25). Heavy (pulls torch); only
+# needed for arbitrary language-pair translation (ACP_TRANSLATE_DRIVER=argos, the
+# default). The GPU-free default test suite runs on the fake translator and does
+# NOT need this.
+#
+# After installing, download the language-pair package(s) you need — each pair is a
+# separate ~100-300 MB download. See .env.example for the en->hi recipe. Argos is
+# offline and MIT-licensed (keeps D4 self-hosted and D17 MIT intact).
+argostranslate>=1.9

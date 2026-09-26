@@ -1,0 +1,11 @@
+{
+  "name": "@ai-content-platform/client",
+  "version": "0.2.0",
+  "description": "Thin JS/TS client for the AI Content Platform transcription REST API. Contains no AI — it wraps the HTTP API (D3).",
+  "license": "MIT",
+  "type": "module",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": ["index.js", "index.d.ts"],
+  "engines": { "node": ">=18" }
+}

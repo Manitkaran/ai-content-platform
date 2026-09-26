@@ -1,0 +1,5 @@
+# Developer / CI tooling (M0.3).
+-r requirements.txt
+pytest>=8.0
+httpx>=0.27
+ruff>=0.5

@@ -1,0 +1,28 @@
+[project]
+name = "ai-content-platform"
+version = "0.1.0"
+description = "Self-hosted speech/video-to-text REST API wrapping an open-source STT model."
+requires-python = ">=3.12"
+license = { text = "MIT" }
+readme = "README.md"
+
+[tool.ruff]
+line-length = 90
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+# E501 (line length) is handled by the formatter; keep lint focused on real bugs.
+# UP042: `str, Enum` is intentional — it keeps JSON serialisation as the plain
+# string value across Pydantic/FastAPI, which `enum.StrEnum` does not guarantee
+# identically on 3.12. The mix is deliberate, not an oversight.
+ignore = ["E501", "UP042"]
+
+[tool.ruff.lint.per-file-ignores]
+# FastAPI's File()/Form()/Depends() in argument defaults is the framework idiom,
+# not the B008 anti-pattern.
+"app/api/routes.py" = ["B008"]
+
+[tool.pytest.ini_options]
+# Mirror pytest.ini for tools that read pyproject; pytest.ini takes precedence.
+addopts = "-q -m 'not real_model'"
